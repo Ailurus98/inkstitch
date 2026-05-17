@@ -19,6 +19,7 @@ from ..threads import ThreadColor
 from ..utils import Point, cache
 from ..utils.param import ParamOption
 from .element import EmbroideryElement, param
+from .satin_column import SatinColumn
 from .validation import ValidationWarning
 
 
@@ -37,6 +38,7 @@ class TooNarrowSatinWarning(ValidationWarning):
     description = _("This element renders as running stitch while it has a satin column parameter.")
     steps_to_solve = [
         _("* Increase stroke width."),
+        _("Whether or not a stroke can be rendered as a satin, depends on the stroke width and the preference value for the minimum satin stroke "
           "width. The stroke width has to be wider than the preference setting, otherwise this element will be treated as a running stitch. To not "
           "produce hard stitches, it is recommended to only use satins wider than 1mm."),
     ]
@@ -687,6 +689,9 @@ class Stroke(EmbroideryElement):
         if self.stroke_method == "manual_stitch":
 <<<<<<< HEAD
             coords = [shgeo.LineString(self.strip_control_points(subpath)).coords for subpath in path if len(self.strip_control_points(subpath)) > 1]
+=======
+            coords = [shgeo.LineString(self.strip_control_points(subpath)).coords for subpath in path if len(subpath) > 1]
+>>>>>>> 4a23c342fa161f08a063cbe69666ddf0da77b2a3
             coords = self._get_clipped_path(coords)
             return coords
         else:
@@ -952,6 +957,7 @@ class Stroke(EmbroideryElement):
         return stitch_groups
 
     @cache
+    def get_guide_line(self, force_satin=False):
         """Return the guide line element."""
         guide_lines = get_marker_elements(self.node, "guide-line", False, True, True)
         # No or empty guide line
@@ -962,6 +968,8 @@ class Stroke(EmbroideryElement):
         # ignore multiple guide lines
         if len(guide_lines["satin"]) >= 1:
             return guide_lines["satin"][0]
+        elif force_satin and len(guide_lines["stroke"][0].geoms) > 1:
+            return SatinColumn(guide_lines["stroke_data"][0]['marker_element'])
         return guide_lines["stroke"][0]
 
     @cache
