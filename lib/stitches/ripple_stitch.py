@@ -50,6 +50,10 @@ def ripple_stitch(stroke):
     if stroke.reverse:
         stitches.reverse()
 
+    return _get_stitch_groups(stroke, stitches, grid_lines, skip_start, skip_end, is_linear)
+
+
+def _get_stitch_groups(stroke, stitches, grid_lines, skip_start, skip_end, is_linear):
     remove_end_travel = True
     if stroke.grid_size != 0:
         remove_end_travel = False
@@ -76,6 +80,9 @@ def ripple_stitch(stroke):
 
 
 def _route_clipped_stitches(stroke, stitches, remove_start_travel=True, remove_end_travel=True, starting_point=None):
+    if not stitches:
+        return []
+
     if stroke.clip_shape is None:
         return [stitches]
 
@@ -301,13 +308,12 @@ def _get_staggered_stitches(stroke, lines, skip_start):
         if len(line) == 1:
             continue
         connector = []
-        if i != 0 and stroke.join_style == 0:
+        if last_point is not None and stroke.join_style == 0:
             if i % 2 == 0 or not stroke.flip_copies:
                 first_point = line[0]
             else:
                 first_point = line[-1]
-            connector = even_running_stitch([last_point, first_point],
-                                            stitch_length, tolerance)[1:-1]
+            connector = even_running_stitch([last_point, first_point], stitch_length, tolerance)[1:-1]
         if stroke.join_style == 0:
             should_reverse = i % 2 == 1
         elif stroke.join_style == 1:
@@ -322,6 +328,8 @@ def _get_staggered_stitches(stroke, lines, skip_start):
                 line, stitch_length, stroke.staggers, i, tolerance, is_random, length_sigma, prng.join_args(random_seed, i),
                 should_reverse, stroke.flip_copies
             )
+        if not stitched_line:
+            continue
 
         stitched_line = connector + stitched_line
 
@@ -458,7 +466,7 @@ def _get_satin_ripple_helper_lines(stroke, grid=False):
         length = stroke.running_stitch_tolerance
     # use satin column points for satin like build ripple stitches
     rail_pairs = SatinColumn(stroke.node).plot_points_on_rails(length)
-    count = _get_satin_line_count(stroke, rail_pairs)
+    count = max(2, _get_satin_line_count(stroke, rail_pairs))
 
     steps = _get_steps(count, exponent=stroke.exponent, flip=stroke.flip_exponent)
 
@@ -571,7 +579,7 @@ def _do_grid(stroke, helper_lines, skip_start, skip_end, is_linear, last_stitch)
 
 def _get_guided_helper_lines(stroke, outline, max_distance):
     # for each point generate a line going along and pointing to the guide line
-    guide_line = stroke.get_guide_line()
+    guide_line = stroke.get_guide_line(True)
     if isinstance(guide_line, SatinColumn):
         # satin type guide line
         return generate_satin_guide_helper_lines(stroke, outline, guide_line)

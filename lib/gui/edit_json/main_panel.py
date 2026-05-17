@@ -51,6 +51,7 @@ class LetteringEditJsonPanel(wx.Panel):
 
         self.text_before = ''
         self.text_after = ''
+        self.text_multiline = ''
 
         self.last_notebook_selection = 4
 
@@ -95,12 +96,10 @@ class LetteringEditJsonPanel(wx.Panel):
         self.warning_panel.Show()
         self.Layout()
 
-    def on_text_before_changed(self, event):
-        self.text_before = event.GetEventObject().GetValue()
-        self.update_preview()
-
-    def on_text_after_changed(self, event):
-        self.text_after = event.GetEventObject().GetValue()
+    def on_text_changed(self, event):
+        self.text_before = self.settings_panel.text_before.GetValue()
+        self.text_after = self.settings_panel.text_after.GetValue()
+        self.text_multiline = self.settings_panel.text_multiline.GetValue()
         self.update_preview()
 
     def on_glyphlist_update(self, event=None):
@@ -312,7 +311,7 @@ class LetteringEditJsonPanel(wx.Panel):
         # reset font_meta
         self.font_meta = defaultdict(list)
         self.font_meta['name'] = self.font.name
-        self.font_meta['description'] = self.font.metadata['description']  # untranslated description
+        self.font_meta['description'] = self.font.untranslated_description
         self.font_meta['font_license'] = self.font.font_license
         self.font_meta['text_direction'] = self.font.text_direction
         self.font_meta['keywords'] = self.font.keywords
@@ -335,7 +334,7 @@ class LetteringEditJsonPanel(wx.Panel):
 
         # update ctrl
         self.settings_panel.font_info.name.ChangeValue(self.font.name)
-        self.settings_panel.font_info.description.ChangeValue(self.font.metadata['description'])
+        self.settings_panel.font_info.description.ChangeValue(self.font.untranslated_description)
         self.settings_panel.font_info.font_license.ChangeValue(self.font.font_license)
         selection = ['ltr', 'rtl', 'ttb', 'btt'].index(self.font.json_default_variant)
         self.settings_panel.font_settings.default_variant.SetSelection(selection)
@@ -433,7 +432,7 @@ class LetteringEditJsonPanel(wx.Panel):
         json_xz_file = path.join(self.font.path, 'font.json.xz')
 
         if not path.isfile(json_file) and not path.isfile(json_xz_file):
-            self._show_warning(_("Could not read json file."))
+            self._show_warning(_("Could not find the json file for this font. Please create one with Font Management > Generate JSON"))
             return
 
         # If we can't write to the json file (as it may not exist, as in the case of font.json.xz w/ no font.json),
@@ -448,8 +447,8 @@ class LetteringEditJsonPanel(wx.Panel):
         json_file = path.join(self.font.path, 'font.json')
         json_xz_file = path.join(self.font.path, 'font.json.xz')
 
-        if not path.isfile(json_file) or not path.isfile(json_file):
-            errormsg(_("Could not read json file."))
+        if not path.isfile(json_file) and not path.isfile(json_xz_file):
+            errormsg(_("Could not find a json file for this font. Please create one with Font Management > Generate JSON"))
             self.cancel()
             return
 
@@ -504,18 +503,30 @@ class LetteringEditJsonPanel(wx.Panel):
         if not text:
             return
 
-        position_x = self._render_text(self.text_before, 0, True)
-        position_x = self._render_text(text, position_x, False)
-        self._render_text(self.text_after, position_x, True)
+        position_x = 0
+        if self.text_before:
+            position_x = self._render_text(self.text_before, 0, 0, True)
+            position_x -= self.kerning_pairs.get(f'{self.text_before[-1]} {text[0]}', 0)
+        position_x = self._render_text(text, position_x, 0, False)
+        if self.text_after:
+            position_x -= self.kerning_pairs.get(f'{text[-1]} {self.text_after[0]}', 0)
+            self._render_text(self.text_after, position_x, 0, True)
+        self._render_text(self.text_multiline, 0, self.font_meta['leading'], True)
 
         if self.default_variant.variant == FontVariant.RIGHT_TO_LEFT:
             self.layer[:] = reversed(self.layer)
             for group in self.layer:
                 group[:] = reversed(group)
 
-    def _render_text(self, text, position_x, use_character_position):
+    def _render_text(self, text, position_x, position_y, use_character_position):
         words = text.split()
-        for i, word in enumerate(words):
+        for j, word in enumerate(words):
+            # forced letter case
+            if self.font_meta['letter_case'] == "upper":
+                word = word.upper()
+            elif self.font_meta['letter_case'] == "lower":
+                word = word.lower()
+
             glyphs = []
             skip = []
             previous_is_binding = False
@@ -536,13 +547,15 @@ class LetteringEditJsonPanel(wx.Panel):
                     last_character = None
                     continue
 
-                position_x = self._render_glyph(glyph, position_x, glyph.name, last_character)
                 last_character = glyph.name
+                position_x = self._render_glyph(glyph, position_x, position_y, glyph.name, last_character)
+                if glyph is not None and j == 0 and self.font_meta['horiz_adv_x_default'] is None:
+                    position_x += glyph.min_x
             position_x += self.font_meta['horiz_adv_x_space']
         position_x -= self.font_meta['horiz_adv_x_space']
         return position_x
 
-    def _render_glyph(self, glyph, position_x, character, last_character):
+    def _render_glyph(self, glyph, position_x, position_y, character, last_character):
         node = deepcopy(glyph.node)
         if last_character is not None:
             if self.font_meta['text_direction'] != 'rtl':
@@ -550,7 +563,7 @@ class LetteringEditJsonPanel(wx.Panel):
             else:
                 position_x += glyph.min_x - self.kerning_pairs.get(f'{character} {last_character}', 0)
 
-        transform = f"translate({position_x}, 0)"
+        transform = f"translate({position_x}, {position_y})"
         node.set('transform', transform)
 
         horiz_adv_x_default = self.font_meta['horiz_adv_x_default']
