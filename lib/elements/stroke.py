@@ -37,7 +37,6 @@ class TooNarrowSatinWarning(ValidationWarning):
     description = _("This element renders as running stitch while it has a satin column parameter.")
     steps_to_solve = [
         _("* Increase stroke width."),
-        _("Wether or not a a stroke can be rendered as a satin, depends on the stroke width and the preference value for the minimum satin stroke "
           "width. The stroke width has to be wider than the preference setting, otherwise this element will be treated as a running stitch. To not "
           "produce hard stitches, it is recommended to only use satins wider than 1mm."),
     ]
@@ -686,6 +685,7 @@ class Stroke(EmbroideryElement):
             ]
 
         if self.stroke_method == "manual_stitch":
+<<<<<<< HEAD
             coords = [shgeo.LineString(self.strip_control_points(subpath)).coords for subpath in path if len(self.strip_control_points(subpath)) > 1]
             coords = self._get_clipped_path(coords)
             return coords
@@ -952,7 +952,6 @@ class Stroke(EmbroideryElement):
         return stitch_groups
 
     @cache
-    def get_guide_line(self):
         """Return the guide line element."""
         guide_lines = get_marker_elements(self.node, "guide-line", False, True, True)
         # No or empty guide line
