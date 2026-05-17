@@ -100,7 +100,14 @@ class GridInteractionEngine:
 
     def _bresenham_line(self, r0: int, c0: int, r1: int, c1: int) -> List[Tuple[int, int]]:
         """
-        Bresenham line algorithm running specifically in abstract grid coordinates.
+        Fill every grid cell on the straight line between two points.
+
+        Why this is necessary: OS mouse-move events fire at 60–125 Hz, but a
+        user can physically move the mouse fast enough to jump 5–10 cells between
+        consecutive EVT_MOTION events. Without interpolation, fast strokes leave
+        visible gaps in the painted trail. Bresenham gives us the exact integer
+        cell path between the last reported cell and the current one, so every
+        intermediate cell is painted even when the OS skipped reporting it.
         """
         pixels = []
         dr = abs(r1 - r0)

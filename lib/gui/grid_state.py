@@ -6,6 +6,9 @@ UI elements, export processes, and interaction layers stay stateless and
 rely only on the explicit API provided here.
 """
 
+import zlib
+import base64
+import json
 from typing import Dict, Tuple, Optional
 
 # Enforce maximum bounds early to prevent performance disasters
@@ -93,3 +96,33 @@ class GridStateManager:
                 locked=cell.locked
             )
         return new_state
+
+    @classmethod
+    def from_serialized(cls, serialized_state: str) -> 'GridStateManager':
+        """Restore a GridStateManager from serialized grid state metadata."""
+        try:
+            compressed = base64.b64decode(serialized_state)
+            raw = zlib.decompress(compressed).decode('utf-8')
+            data = json.loads(raw)
+        except Exception as exc:
+            raise ValueError("Invalid serialized grid state") from exc
+
+        if data.get("version", 1) != 1:
+            raise ValueError("Unsupported serialized grid-state version")
+
+        rows = data["rows"]
+        cols = data["cols"]
+        state = cls(rows=rows, cols=cols)
+
+        for entry in data.get("cells", []):
+            if len(entry) != 6:
+                raise ValueError("Serialized grid state cell entry has invalid format")
+            row, col, thread_id, stitch_type, direction, locked = entry
+            state.cells[(row, col)] = Cell(
+                thread_id=thread_id,
+                stitch_type=stitch_type,
+                direction=direction,
+                locked=locked,
+            )
+
+        return state

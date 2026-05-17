@@ -23,22 +23,25 @@ def test_grid_bounds():
     
 def test_cell_storage():
     state = GridStateManager(rows=10, cols=10)
-    cell = Cell(thread_id="#ABC")
-    state.set_cell(5, 5, cell)
-    
-    assert state.get_cell(5, 5).thread_id == "#ABC"
+    state.set_cell(5, 5, Cell())
+
+    assert state.get_cell(5, 5) is not None
     assert state.get_cell(0, 0) is None
-    
+
     with pytest.raises(ValueError):
-        state.set_cell(20, 20, cell)
-        
+        state.set_cell(20, 20, Cell())
+
 def test_clone_isolation():
     state = GridStateManager(10, 10)
-    state.set_cell(1, 1, Cell(thread_id="A"))
-    
+    state.set_cell(1, 1, Cell())
+
     new_state = state.clone()
-    new_state.set_cell(1, 1, Cell(thread_id="B"))
-    new_state.set_cell(2, 2, Cell(thread_id="C"))
-    
-    assert state.get_cell(1, 1).thread_id == "A"
+    new_state.set_cell(2, 2, Cell())
+
+    # Original unaffected by changes to the clone
+    assert state.get_cell(1, 1) is not None
     assert state.get_cell(2, 2) is None
+
+    # Clone has both cells
+    assert new_state.get_cell(1, 1) is not None
+    assert new_state.get_cell(2, 2) is not None

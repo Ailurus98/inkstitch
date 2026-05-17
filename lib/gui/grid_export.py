@@ -11,6 +11,7 @@ import inkex
 
 from .grid_state import GridStateManager, Cell
 from .grid_mapper import grid_to_svg
+from .region_merger import merge_runs
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ def _serialize_state(grid_state: GridStateManager) -> str:
         ])
     
     data = {
+        "version": 1,
         "rows": grid_state.rows,
         "cols": grid_state.cols,
         "cells": sparse_list
@@ -68,32 +70,35 @@ def build_export_group(grid_state: GridStateManager, cell_size: float, correctio
         if tid not in threads:
             threads[tid] = {}
         threads[tid][pos] = cell
-        
-    total_cells = 0
     
+    total_runs = 0
     # Process each grouped thread in predictable sorted order
     for tid in sorted(threads.keys()):
         thread_group = inkex.Group()
         if tid:
             thread_group.set("inkstitch:thread", str(tid))
             
-        for (row, col), cell in threads[tid].items():
-            total_cells += 1
-            x, y = grid_to_svg(row, col, cell_size)
-            width = cell_size
+        rects = merge_runs(threads[tid], horizontal_only=True)
+        total_runs += len(rects)
+
+        for r in rects:
+            x_start, y = grid_to_svg(r.row, r.col, cell_size)
+            width = r.width * cell_size
             height = cell_size
             
-            # Inset the cross slightly so it does not overlap grid lines
-            margin = cell_size * 0.15
-            x1 = x + margin
-            y1 = y + margin
-            x2 = x + width - margin
-            y2 = y + height - margin
-            
-            cross_path = (
-                f"M{x1},{y1} L{x2},{y2} "
-                f"M{x1},{y2} L{x2},{y1}"
-            )
+            # Build a single cross path per run, combining adjacent cells in the same row.
+            margins = cell_size * 0.15
+            segments = []
+            for col in range(r.col, r.col + r.width):
+                x, y_cell = grid_to_svg(r.row, col, cell_size)
+                x1 = x + margins
+                y1 = y_cell + margins
+                x2 = x + cell_size - margins
+                y2 = y_cell + cell_size - margins
+                segments.append(f"M{x1},{y1} L{x2},{y2}")
+                segments.append(f"M{x1},{y2} L{x2},{y1}")
+
+            cross_path = " ".join(segments)
             cross_elem = inkex.PathElement(attrib={
                 "d": cross_path,
                 "style": f"fill:none;stroke:{tid};stroke-width:1.5;stroke-linecap:round;stroke-opacity:0.9"
@@ -102,10 +107,10 @@ def build_export_group(grid_state: GridStateManager, cell_size: float, correctio
             
         root_group.append(thread_group)
         
-    if total_cells > MAX_EXPORT_RECTS:
+    if total_runs > MAX_EXPORT_RECTS:
         logger.warning(
-            "DOM SCALING WARNING: Extracted %d SVG rects. Render performance will degrade.", 
-            total_rects
+            "DOM SCALING WARNING: Extracted %d SVG runs. Render performance will degrade.", 
+            total_runs
         )
         
     # Embed compressed grid state into the group metadata
